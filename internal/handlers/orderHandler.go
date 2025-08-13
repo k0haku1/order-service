@@ -3,7 +3,7 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/k0haku1/order-service/internal/models"
+	"github.com/k0haku1/order-service/internal/dto"
 	"github.com/k0haku1/order-service/internal/service"
 )
 
@@ -16,20 +16,48 @@ func NewOrderHandler(orderService *service.OrderService) *OrderHandler {
 }
 
 func (h *OrderHandler) CreateOrder(c *fiber.Ctx) error {
-	var order models.Order
-	if err := c.BodyParser(&order); err != nil {
+	var req dto.CreateOrderRequest
+	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
-	if err := h.orderService.CreateOrder(&order); err != nil {
+	order, err := h.orderService.CreateOrder(req.CustomerID, req.Products)
+	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.SendStatus(fiber.StatusCreated)
+	return c.Status(fiber.StatusCreated).JSON(dto.CreateOrderResponse{
+		ID:         order.ID,
+		CustomerID: order.CustomerID,
+		Status:     order.Status,
+		Products:   order.OrderProducts,
+	})
+}
+
+func (h *OrderHandler) UpdateOrder(c *fiber.Ctx) error {
+	var req dto.UpdateOrderRequest
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	order, err := h.orderService.UpdateOrder(req.CustomerID, id, req.Products)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.Status(fiber.StatusOK).JSON(dto.CreateOrderResponse{
+		ID:         order.ID,
+		CustomerID: order.CustomerID,
+		Status:     order.Status,
+		Products:   order.OrderProducts,
+	})
 }
 func (h *OrderHandler) GetOrder(c *fiber.Ctx) error {
-	idStr := c.Params("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid id")
 	}
@@ -38,5 +66,10 @@ func (h *OrderHandler) GetOrder(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(order)
+	return c.JSON(dto.CreateOrderResponse{
+		ID:         order.ID,
+		CustomerID: order.CustomerID,
+		Status:     order.Status,
+		Products:   order.OrderProducts,
+	})
 }

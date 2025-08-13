@@ -22,16 +22,16 @@ func main() {
 	}
 
 	orderRepository := repositories.NewOrderRepository(db)
-	orderService := service.NewOrderService(orderRepository)
+	customerRepository := repositories.NewCustomerRepository(db)
+	productRepository := repositories.NewProductRepository(db)
+
+	orderService := service.NewOrderService(orderRepository, customerRepository, productRepository)
 	orderHandler := handlers.NewOrderHandler(orderService)
 
 	app := fiber.New()
 	app.Post("orders/create", orderHandler.CreateOrder)
 	app.Get("orders/:id", orderHandler.GetOrder)
-
-	err = app.Listen(":8080")
-	if err != nil {
-		return
-	}
+	app.Post("orders/update/:id", orderHandler.UpdateOrder)
+	log.Fatal(app.Listen(":8081"))
 
 }

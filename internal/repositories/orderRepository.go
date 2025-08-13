@@ -7,8 +7,7 @@ import (
 )
 
 type OrderRepository struct {
-	db                 *gorm.DB
-	customerRepository CustomerRepository
+	db *gorm.DB
 }
 
 func NewOrderRepository(db *gorm.DB) *OrderRepository {
@@ -27,21 +26,28 @@ func (r *OrderRepository) FindByID(id uuid.UUID) (*models.Order, error) {
 
 	return &order, nil
 }
-func (r *OrderRepository) CreateOrder(customerID uuid.UUID, order *models.Order) error {
-	_, err := r.customerRepository.FindByID(customerID)
-	if err != nil {
-		return err
-	}
-	order.CustomerID = customerID
-	order.Status = "CREATED"
-
-	if err := r.db.Create(order).Error; err != nil {
-		return err
-	}
-
-	return r.db.Preload("OrderProducts.Product").First(order, "id = ?", order.ID).Error
+func (r *OrderRepository) CreateWithTx(tx *gorm.DB, order *models.Order) error {
+	return tx.Create(order).Error
 }
 
-func (r *OrderRepository) addProductToOrder(id uuid.UUID) error {
+func (r *OrderRepository) UpdateWithTx(tx *gorm.DB, order *models.Order) error {
+	if err := tx.Save(order).Error; err != nil {
+		return err
+	}
 
+	for i := range order.OrderProducts {
+		if err := tx.Save(&order.OrderProducts[i]).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *OrderRepository) Delete(id uuid.UUID) error {
+	return r.db.Delete(&models.Order{}, "id = ?", id).Error
+}
+
+func (r *OrderRepository) WithTransaction(fn func(tx *gorm.DB) error) error {
+	return r.db.Transaction(fn)
 }
