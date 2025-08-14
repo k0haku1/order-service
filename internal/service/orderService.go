@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/k0haku1/order-service/internal/kafka"
 	"github.com/k0haku1/order-service/internal/models"
 	"github.com/k0haku1/order-service/internal/repositories"
 	"gorm.io/gorm"
@@ -13,17 +14,20 @@ type OrderService struct {
 	orderRepository    *repositories.OrderRepository
 	customerRepository *repositories.CustomerRepository
 	productRepository  *repositories.ProductRepository
+	dispatcher         *kafka.Dispatcher
 }
 
 func NewOrderService(
 	orderRepository *repositories.OrderRepository,
 	customerRepository *repositories.CustomerRepository,
 	productRepository *repositories.ProductRepository,
+	dispatcher *kafka.Dispatcher,
 ) *OrderService {
 	return &OrderService{
 		orderRepository:    orderRepository,
 		customerRepository: customerRepository,
 		productRepository:  productRepository,
+		dispatcher:         dispatcher,
 	}
 }
 
@@ -82,21 +86,26 @@ func (s *OrderService) CreateOrder(customerID uuid.UUID, products []models.Order
 		return nil, err
 	}
 
+	s.dispatcher.Publish(
+		"order.created",
+		[]byte(fmt.Sprintf(`{"order_id": "%s", "customer_id": "%s", "order": "%s"}`, fullOrder.ID, fullOrder.CustomerID, fullOrder)),
+	)
+
 	return fullOrder, nil
 
 }
 
-func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []models.OrderProduct) (*models.Order, error) {
+func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []models.OrderProduct) *models.Order {
 	_, err := s.customerRepository.FindByID(customerID)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	order, err := s.orderRepository.FindByID(orderID)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	if order.CustomerID != customerID {
-		return nil, fmt.Errorf("order customer %s is not owned by %s", order.CustomerID, customerID)
+		return nil
 	}
 
 	productIDs := make([]uuid.UUID, len(products))
@@ -106,7 +115,7 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 
 	existingProducts, err := s.productRepository.FindByID(productIDs)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 
 	productMap := make(map[uuid.UUID]*models.Product)
@@ -117,7 +126,7 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 	for _, p := range products {
 		prod := productMap[p.ProductID]
 		if prod == nil || prod.Amount < p.Quantity {
-			return nil, fmt.Errorf("product %s not available", p.ProductID)
+			return nil
 		}
 	}
 
@@ -173,10 +182,20 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 	})
 
 	if err != nil {
-		return nil, err
+		return nil
 	}
 
-	return s.orderRepository.FindByID(orderID)
+	fullOrder, err := s.orderRepository.FindByID(order.ID)
+	if err != nil {
+		return nil
+	}
+
+	s.dispatcher.Publish(
+		"order.updated",
+		[]byte(fmt.Sprintf(`{"order_id": "%s", "customer_id": "%s"}`, fullOrder.ID, fullOrder.CustomerID)),
+	)
+
+	return fullOrder
 }
 
 func (s *OrderService) GetOrder(id uuid.UUID) (*models.Order, error) {
