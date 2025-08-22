@@ -45,9 +45,6 @@ func (h *OrderHandler) UpdateOrder(c *fiber.Ctx) error {
 	}
 
 	order := h.orderService.UpdateOrder(req.CustomerID, id, req.Products)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
 
 	return c.Status(fiber.StatusOK).JSON(dto.CreateOrderResponse{
 		ID:         order.ID,

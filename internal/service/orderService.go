@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/k0haku1/order-service/internal/kafka"
@@ -86,10 +87,39 @@ func (s *OrderService) CreateOrder(customerID uuid.UUID, products []models.Order
 		return nil, err
 	}
 
-	s.dispatcher.Publish(
-		"order.created",
-		[]byte(fmt.Sprintf(`{"order_id": "%s", "customer_id": "%s", "order": "%s"}`, fullOrder.ID, fullOrder.CustomerID, fullOrder)),
-	)
+	payload := struct {
+		OrderID    uuid.UUID `json:"order_id"`
+		CustomerID uuid.UUID `json:"customer_id"`
+		Products   []struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		} `json:"products"`
+	}{
+		OrderID:    fullOrder.ID,
+		CustomerID: fullOrder.CustomerID,
+		Products: []struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		}{},
+	}
+
+	for _, op := range fullOrder.OrderProducts {
+		payload.Products = append(payload.Products, struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		}{
+			ID:       op.ProductID,
+			Name:     op.Product.Name,
+			Quantity: int32(op.Quantity),
+		})
+	}
+
+	b, _ := json.Marshal(payload)
+
+	s.dispatcher.Publish("order.created", b)
 
 	return fullOrder, nil
 
@@ -171,7 +201,7 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 
 			log.Printf("Сохраняем продукт %s (остаток: %d)", prod.ID, prod.Amount)
 			if err := s.productRepository.UpdateWithTx(tx, prod); err != nil {
-				log.Printf("❌ Ошибка при сохранении продукта %s: %v", prod.ID, err)
+				log.Printf("Ошибка при сохранении продукта %s: %v", prod.ID, err)
 				return err
 			}
 		}
@@ -190,9 +220,10 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 		return nil
 	}
 
+	orderJSON, _ := json.Marshal(fullOrder)
 	s.dispatcher.Publish(
-		"order.updated",
-		[]byte(fmt.Sprintf(`{"order_id": "%s", "customer_id": "%s"}`, fullOrder.ID, fullOrder.CustomerID)),
+		"order.created",
+		orderJSON,
 	)
 
 	return fullOrder
