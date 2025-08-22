@@ -32,19 +32,21 @@ func NewDispatcher(producer *Producer, bufferSize int) *Dispatcher {
 
 func (d *Dispatcher) run() {
 	defer d.wg.Done()
-
 	for {
 		select {
-		case e := <-d.events:
+		case e, ok := <-d.events:
+			if !ok {
+				return
+			}
 			d.producer.Send(e.Key, e.Value)
 
 		case <-d.stopCh:
+			close(d.events)
 			for e := range d.events {
 				d.producer.Send(e.Key, e.Value)
 			}
+			return
 		}
-		return
-
 	}
 }
 func (d *Dispatcher) Publish(key string, value []byte) {
