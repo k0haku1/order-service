@@ -137,7 +137,7 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 	if order.CustomerID != customerID {
 		return nil
 	}
-
+	order.Status = "UPDATED"
 	productIDs := make([]uuid.UUID, len(products))
 	for i, p := range products {
 		productIDs[i] = p.ProductID
@@ -220,11 +220,38 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 		return nil
 	}
 
-	orderJSON, _ := json.Marshal(fullOrder)
-	s.dispatcher.Publish(
-		"order.created",
-		orderJSON,
-	)
+	payload := struct {
+		OrderID    uuid.UUID `json:"order_id"`
+		CustomerID uuid.UUID `json:"customer_id"`
+		Products   []struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		} `json:"products"`
+	}{
+		OrderID:    fullOrder.ID,
+		CustomerID: fullOrder.CustomerID,
+		Products: []struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		}{},
+	}
+
+	for _, op := range fullOrder.OrderProducts {
+		payload.Products = append(payload.Products, struct {
+			ID       uuid.UUID `json:"id"`
+			Name     string    `json:"name"`
+			Quantity int32     `json:"quantity"`
+		}{
+			ID:       op.ProductID,
+			Name:     op.Product.Name,
+			Quantity: int32(op.Quantity),
+		})
+	}
+
+	b, _ := json.Marshal(payload)
+	s.dispatcher.Publish("order.updated", b)
 
 	return fullOrder
 }

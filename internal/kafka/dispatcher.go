@@ -53,7 +53,7 @@ func (d *Dispatcher) Publish(key string, value []byte) {
 	select {
 	case d.events <- Event{Key: key, Value: value}:
 	default:
-		log.Println("WARNING: Event channel is full")
+		log.Println("Event channel is full")
 	}
 }
 
