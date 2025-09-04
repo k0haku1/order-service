@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/k0haku1/order-service/internal/dto"
 	"github.com/k0haku1/order-service/internal/kafka"
 	"github.com/k0haku1/order-service/internal/models"
 	"github.com/k0haku1/order-service/internal/repositories"
@@ -87,37 +88,23 @@ func (s *OrderService) CreateOrder(customerID uuid.UUID, products []models.Order
 		return nil, err
 	}
 
-	payload := struct {
-		OrderID    uuid.UUID `json:"order_id"`
-		CustomerID uuid.UUID `json:"customer_id"`
-		Products   []struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		} `json:"products"`
-	}{
-		OrderID:    fullOrder.ID,
-		CustomerID: fullOrder.CustomerID,
-		Products: []struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		}{},
-	}
-
+	productsForEvent := make([]dto.OrderEventProduct, 0, len(fullOrder.OrderProducts))
 	for _, op := range fullOrder.OrderProducts {
-		payload.Products = append(payload.Products, struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		}{
+		productsForEvent = append(productsForEvent, dto.OrderEventProduct{
 			ID:       op.ProductID,
 			Name:     op.Product.Name,
 			Quantity: int32(op.Quantity),
 		})
 	}
 
-	b, _ := json.Marshal(payload)
+	event := dto.OrderEvent{
+		EventID:    uuid.New(),
+		OrderID:    fullOrder.ID,
+		CustomerID: fullOrder.CustomerID,
+		Products:   productsForEvent,
+	}
+
+	b, _ := json.Marshal(event)
 
 	s.dispatcher.Publish("order.created", b)
 
@@ -220,37 +207,23 @@ func (s *OrderService) UpdateOrder(customerID, orderID uuid.UUID, products []mod
 		return nil
 	}
 
-	payload := struct {
-		OrderID    uuid.UUID `json:"order_id"`
-		CustomerID uuid.UUID `json:"customer_id"`
-		Products   []struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		} `json:"products"`
-	}{
-		OrderID:    fullOrder.ID,
-		CustomerID: fullOrder.CustomerID,
-		Products: []struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		}{},
-	}
-
+	productsForEvent := make([]dto.OrderEventProduct, 0, len(fullOrder.OrderProducts))
 	for _, op := range fullOrder.OrderProducts {
-		payload.Products = append(payload.Products, struct {
-			ID       uuid.UUID `json:"id"`
-			Name     string    `json:"name"`
-			Quantity int32     `json:"quantity"`
-		}{
+		productsForEvent = append(productsForEvent, dto.OrderEventProduct{
 			ID:       op.ProductID,
 			Name:     op.Product.Name,
 			Quantity: int32(op.Quantity),
 		})
 	}
 
-	b, _ := json.Marshal(payload)
+	event := dto.OrderEvent{
+		EventID:    uuid.New(),
+		OrderID:    fullOrder.ID,
+		CustomerID: fullOrder.CustomerID,
+		Products:   productsForEvent,
+	}
+
+	b, _ := json.Marshal(event)
 	s.dispatcher.Publish("order.updated", b)
 
 	return fullOrder
